@@ -1,0 +1,57 @@
+# git-dmerge
+
+## Overview
+NOTE: Modified from https://github.com/thenigan/git-diffall[git-diffall]
+
+This script performs a directory diff and merge between a commit in the repository and the working tree using the external diff or merge tool for git. It is intended for merging branches manually without trying to automatically merge files.
+
+## Installation
+Copy the script to the directory where your `git` is installed:
+
+[source,bash]
+----
+cd <directory with git-dmerge>
+cp git-dmerge $(git --exec-path)
+----
+
+Setup `diff.tool` for git. For example:
+
+[source,bash]
+----
+git config --global diff.tool meld
+----
+
+For Window, path should be specified. For example:
+
+[source,bash]
+----
+git config --global difftool.meld.path "C:\Program Files (x86)\Meld\Meld.exe"
+----
+
+## Usage
+[source,bash]
+----
+git dmerge [-x|--extcmd=<command>] <commit>[..|...] [-- <path>*]
+
+    -x=<command>
+    --extcmd=<command>  Specify a custom command for viewing diffs.
+                 git-dmerge ignores the configured defaults and
+                 runs $command $LOCAL $REMOTE when this option is
+                 specified.
+
+If success, expected next steps are:
+    Review results
+    $ git merge -s ours --no-commit <commit>
+    Stage and commit
+----
+
+## Example
+
+Scenario: merge branch BBB to branch AAA
+
+. Checkout branch AAA.
+. Make sure that there are no staged or unstaged changes.
+. Run `git dmerge BBB`
+. Manually merge diffs in the diff tool.
+. Run `git merge -s ours --no-commit BBB`
+. Stage and commit.

@@ -1,0 +1,184 @@
+#!/bin/sh
+# Perform a directory diff and merge between a commit in the repository and 
+# the working tree using the external diff or merge tool.
+
+USAGE='[-x|--extcmd=<command>] <commit>[..|...] [-- <path>*]
+
+    -x=<command>
+    --extcmd=<command>  Specify a custom command for viewing diffs.
+                 git-dmerge ignores the configured defaults and
+                 runs $command $LOCAL $REMOTE when this option is
+                 specified.
+
+If success, expected next steps are:
+    Review results
+    $ git merge -s ours --no-commit <commit>
+    Stage and commit
+'
+
+SUBDIRECTORY_OK=1
+. "$(git --exec-path)/git-sh-setup"
+
+TOOL_MODE=diff
+. "$(git --exec-path)/git-mergetool--lib"
+
+left=
+paths=
+dashdash_seen=
+merge_base=
+left_dir=
+right_dir=
+diff_tool=
+
+# parse arguments
+while test $# != 0
+do
+    case "$1" in
+    -h|--h|--he|--hel|--help)
+        usage
+        ;;
+    -x|--e|--ex|--ext|--extc|--extcm|--extcmd)
+        if test $# = 1
+        then
+            echo You must specify the tool for use with --extcmd
+            usage
+        else
+            diff_tool=$2
+            shift
+        fi
+        ;;
+    --)
+        dashdash_seen=1
+        ;;
+    -*)
+        echo Invalid option: "$1"
+        usage
+        ;;
+    *)
+        # could be commit, commit range or path limiter
+        case "$1" in
+        *...)
+            left=${1%...}
+            merge_base=1
+            ;;
+        *..)
+            left=${1%..}
+            ;;
+        *)
+            if test -n "$dashdash_seen"
+            then
+                paths="$paths$1 "
+            elif test -z "$left"
+            then
+                left=$1
+            else
+                paths="$paths$1 "
+            fi
+            ;;
+        esac
+        ;;
+    esac
+    shift
+done
+
+if test -z "$diff_tool"
+then
+    merge_tool="$(get_merge_tool)"
+    if test -z "$merge_tool"
+    then
+        echo "Error: At least one of '--extcmd', 'diff.tool' or 'merge.tool' must be set."
+        usage
+    fi
+fi
+
+git_top_dir=$(git rev-parse --show-toplevel)
+
+# set up temp dir
+tmp=$(perl -e 'use File::Temp qw(tempdir);
+    $t=tempdir("/tmp/git-dmerge.XXXXX") or exit(1);
+    print $t') || exit 1
+trap 'rm -rf "$tmp"' EXIT
+
+# Determine the set of files which changed
+if test -n "$left"
+then
+    left_dir="cmt-$(git rev-parse --short $left)"
+    right_dir="working_tree"
+    git diff --name-status "$left" -- $paths >"$tmp/filelist"
+else
+    echo "Error: <commit> must be set."
+    usage
+fi
+
+# Exit immediately if there are no diffs
+if test ! -s "$tmp/filelist"
+then
+    echo "Info: No diffs found."
+    exit 0
+fi
+
+# Create the named tmp directories that will hold the files to be compared
+mkdir -p "$tmp/$left_dir" "$tmp/$right_dir"
+
+# Populate left and right directories with the files to be compared
+while IFS="	" read status name
+do
+    # left
+    ls_list=$(git ls-tree $left "$name")
+    if test -n "$ls_list"
+    then
+        mkdir -p "$tmp/$left_dir/$(dirname "$name")"
+        git show "$left":"$name" >"$tmp/$left_dir/$name" || true
+    fi
+    # right
+    if test -e "$name"
+    then
+        mkdir -p "$tmp/$right_dir/$(dirname "$name")"
+        ln -s "$git_top_dir/$name" "$tmp/$right_dir/$name"
+    fi
+done < "$tmp/filelist"
+
+LOCAL="$tmp/$left_dir"
+REMOTE="$tmp/$right_dir"
+
+if test -n "$diff_tool"
+then
+    eval $diff_tool '"$LOCAL"' '"$REMOTE"'
+else
+    run_merge_tool "$merge_tool" false
+fi
+
+# Process added and deleted files
+while IFS="	" read status name
+do
+    case $status in
+    A*) # added
+        while test "$name" != "."
+        do
+            if test -e "$tmp/$right_dir/$name"
+            then
+                break
+            else
+                rm -rf "$git_top_dir/$name"
+                name=$(dirname "$name")
+            fi
+        done
+        ;;
+    D*) # deleted
+        if test -f "$tmp/$right_dir/$name"
+        then
+            mkdir -p "$git_top_dir/$(dirname "$name")"
+            cp "$tmp/$right_dir/$name" "$git_top_dir/$name"
+        fi
+        ;;
+    M*) # modified
+        ;;
+    *) # other
+        ;;
+    esac
+done < "$tmp/filelist"
+
+echo 'If success, expected next steps are:
+    Review results
+    $ git merge -s ours --no-commit '$left'
+    Stage and commit'
