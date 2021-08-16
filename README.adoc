@@ -21,7 +21,7 @@ Setup `diff.tool` for git. For example:
 git config --global diff.tool meld
 ----
 
-For Window, path should be specified. For example:
+If the difftool is not in the path environment, its path should be configured. For example (Windows):
 
 [source,bash]
 ----
