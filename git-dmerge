@@ -104,7 +104,12 @@ if test -n "$left"
 then
     left_dir="cmt-$(git rev-parse --short $left)"
     right_dir="working_tree"
-    git diff --name-status "$left" -- $paths >"$tmp/filelist"
+    if test -n "$merge_base"
+    then
+        eval git diff --name-status "$left"... -- $paths > "$tmp/filelist"
+    else
+        eval git diff --name-status "$left" -- $paths > "$tmp/filelist"
+    fi
 else
     echo "Error: <commit> must be set."
     usage
@@ -128,7 +133,7 @@ do
     if test -n "$ls_list"
     then
         mkdir -p "$tmp/$left_dir/$(dirname "$name")"
-        git show "$left":"$name" >"$tmp/$left_dir/$name" || true
+        git show "$left":"$name" > "$tmp/$left_dir/$name" || true
     fi
     # right
     if test -e "$name"
@@ -181,4 +186,5 @@ done < "$tmp/filelist"
 echo 'If success, expected next steps are:
     Review results
     $ git merge -s ours --no-commit '$left'
-    Stage and commit'
+    Stage and commit
+'
