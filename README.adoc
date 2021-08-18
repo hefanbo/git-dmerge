@@ -28,6 +28,12 @@ If the difftool is not in the path environment, its path should be configured. F
 git config --global difftool.meld.path "C:\Program Files (x86)\Meld\Meld.exe"
 ----
 
+To work with "unusual" characters in filenames, set:
+[source,bash]
+----
+git config --global core.quotepath false
+----
+
 ## Usage
 [source,bash]
 ----
